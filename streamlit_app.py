@@ -144,48 +144,48 @@ urls = st.session_state["urls"]
 
 st.success("Done.")
 
-    # ── Summary metrics ───────────────────────────────────────────────────────
-    total   = len(df)
-    ok      = (df["Status"] == 200).sum()
-    blocked = df["Status"].isin([403, 429]).sum()
-    errors  = df["Status"].apply(lambda x: isinstance(x, str) and x not in ("─",)).sum()
+# ── Summary metrics ───────────────────────────────────────────────────────
+total   = len(df)
+ok      = (df["Status"] == 200).sum()
+blocked = df["Status"].isin([403, 429]).sum()
+errors  = df["Status"].apply(lambda x: isinstance(x, str) and x not in ("─",)).sum()
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total requests", total)
-    c2.metric("200 OK", int(ok))
-    c3.metric("Blocked (403/429)", int(blocked))
-    c4.metric("Errors", int(errors))
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Total requests", total)
+c2.metric("200 OK", int(ok))
+c3.metric("Blocked (403/429)", int(blocked))
+c4.metric("Errors", int(errors))
 
-    st.divider()
+st.divider()
 
-    # ── Filters ───────────────────────────────────────────────────────────────
-    col1, col2 = st.columns(2)
+# ── Filters ───────────────────────────────────────────────────────────────
+col1, col2 = st.columns(2)
 
-    with col1:
-        url_filter = st.selectbox("Filter by URL", ["All"] + urls)
-    with col2:
-        categories = ["All"] + sorted(df["Category"].unique().tolist())
-        cat_filter = st.radio("Filter by category", categories, horizontal=True)
+with col1:
+    url_filter = st.selectbox("Filter by URL", ["All"] + urls)
+with col2:
+    categories = ["All"] + sorted(df["Category"].unique().tolist())
+    cat_filter = st.radio("Filter by category", categories, horizontal=True)
 
-    display_df = df.copy()
-    if url_filter != "All":
-        display_df = display_df[display_df["URL"] == url_filter]
-    if cat_filter != "All":
-        display_df = display_df[display_df["Category"] == cat_filter]
+display_df = df.copy()
+if url_filter != "All":
+    display_df = display_df[display_df["URL"] == url_filter]
+if cat_filter != "All":
+    display_df = display_df[display_df["Category"] == cat_filter]
 
-    # Hide URL column when filtered to a single URL
-    cols = display_df.columns.tolist() if url_filter == "All" else [c for c in display_df.columns if c != "URL"]
+# Hide URL column when filtered to a single URL
+cols = display_df.columns.tolist() if url_filter == "All" else [c for c in display_df.columns if c != "URL"]
 
-    st.dataframe(
-        display_df[cols].style.applymap(status_color, subset=["Status"]),
-        use_container_width=True,
-        hide_index=True,
-    )
+st.dataframe(
+    display_df[cols].style.applymap(status_color, subset=["Status"]),
+    use_container_width=True,
+    hide_index=True,
+)
 
-    # ── Download ──────────────────────────────────────────────────────────────
-    st.download_button(
-        "⬇ Download CSV",
-        data=df.to_csv(index=False),
-        file_name="bot_check_results.csv",
-        mime="text/csv",
-    )
+# ── Download ──────────────────────────────────────────────────────────────
+st.download_button(
+    "⬇ Download CSV",
+    data=df.to_csv(index=False),
+    file_name="bot_check_results.csv",
+    mime="text/csv",
+)
