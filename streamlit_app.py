@@ -23,6 +23,11 @@ BOTS = {
     "Rogerbot":             ("SEO",    "Mozilla/5.0 (compatible; Rogerbot/1.0; +http://www.moz.com/help/pro/what-is-rogerbot)"),
     "SEOkicks":             ("SEO",    "Mozilla/5.0 (compatible; SEOkicks; +https://www.seokicks.de/robot.html)"),
     "DataForSeoBot":        ("SEO",    "Mozilla/5.0 (compatible; DataForSeoBot/1.0; +https://dataforseo.com/dataforseo-bot)"),
+    "BLEXBot":              ("SEO",    "Mozilla/5.0 (compatible; BLEXBot/1.0; +http://webmeup-crawler.com/)"),
+    "ScreamingFrog":        ("SEO",    "Screaming Frog SEO Spider/19.0"),
+    "Sitebulb":             ("SEO",    "Mozilla/5.0 (compatible; Sitebulb/1.0; +https://sitebulb.com)"),
+    "SERankingBot":         ("SEO",    "Mozilla/5.0 (compatible; SERanking Bot/1.0; +http://seranking.com/bot.html)"),
+    "audisto":              ("SEO",    "Mozilla/5.0 (compatible; audisto bot; +https://audisto.com/)"),
     # AI crawlers
     "GPTBot":               ("AI",     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)"),
     "ChatGPT-User":         ("AI",     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot"),
