@@ -41,7 +41,8 @@ BOTS = {
     "Browser":              ("Ref",    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"),
 }
 
-TIMEOUT = 20
+MAX_URLS = 20
+TIMEOUT  = 20
 
 
 def normalize(url: str) -> str:
@@ -57,6 +58,7 @@ def fetch(bot_name: str, category: str, ua: str, url: str) -> dict:
             allow_redirects=True,
         )
         return {
+            "URL":          url,
             "Bot":          bot_name,
             "Category":     category,
             "Status":       r.status_code,
@@ -66,24 +68,27 @@ def fetch(bot_name: str, category: str, ua: str, url: str) -> dict:
             "Final URL":    r.url if r.url != url else "─",
         }
     except requests.exceptions.Timeout:
-        return {"Bot": bot_name, "Category": category, "Status": "Timeout",  "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+        return {"URL": url, "Bot": bot_name, "Category": category, "Status": "Timeout",  "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
     except requests.exceptions.ConnectionError:
-        return {"Bot": bot_name, "Category": category, "Status": "ConnErr",  "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+        return {"URL": url, "Bot": bot_name, "Category": category, "Status": "ConnErr",  "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
     except Exception as e:
-        return {"Bot": bot_name, "Category": category, "Status": type(e).__name__, "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+        return {"URL": url, "Bot": bot_name, "Category": category, "Status": type(e).__name__, "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
 
 
-def check_url(url: str) -> pd.DataFrame:
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        futures = {
-            ex.submit(fetch, name, cat, ua, url): name
-            for name, (cat, ua) in BOTS.items()
-        }
+def check_urls(urls: list[str]) -> pd.DataFrame:
+    tasks = [
+        (name, cat, ua, url)
+        for url in urls
+        for name, (cat, ua) in BOTS.items()
+    ]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+        futures = [ex.submit(fetch, name, cat, ua, url) for name, cat, ua, url in tasks]
         results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
-    # Preserve original bot order
-    order = list(BOTS.keys())
-    results.sort(key=lambda r: order.index(r["Bot"]))
+    # Sort by original URL order, then bot order
+    url_order = {u: i for i, u in enumerate(urls)}
+    bot_order = {b: i for i, b in enumerate(BOTS.keys())}
+    results.sort(key=lambda r: (url_order[r["URL"]], bot_order[r["Bot"]]))
     return pd.DataFrame(results)
 
 
@@ -104,46 +109,68 @@ def status_color(val):
 st.set_page_config(page_title="Bot Checker", page_icon="🤖", layout="wide")
 
 st.title("🤖 Bot Checker")
-st.caption("Check how a URL responds to search engine, SEO, and AI crawlers.")
+st.caption("Check how URLs respond to search engine, SEO, and AI crawlers. Up to 20 URLs at once.")
 
-url_input = st.text_input("Enter a URL", placeholder="https://example.com")
+url_input = st.text_area(
+    "Enter URLs (one per line, up to 20)",
+    placeholder="https://example.com\nhttps://another.com/page",
+    height=150,
+)
 
 if st.button("Check", type="primary") and url_input.strip():
-    url = normalize(url_input.strip())
-    st.markdown(f"**Checking:** `{url}`")
+    raw = [u.strip() for u in url_input.strip().splitlines() if u.strip()]
+    if len(raw) > MAX_URLS:
+        st.warning(f"Only the first {MAX_URLS} URLs will be checked.")
+        raw = raw[:MAX_URLS]
 
-    with st.spinner(f"Sending requests from {len(BOTS)} bots…"):
-        df = check_url(url)
+    urls = [normalize(u) for u in raw]
+    n_bots = len(BOTS)
+    st.markdown(f"Checking **{len(urls)} URL{'s' if len(urls) > 1 else ''}** × **{n_bots} bots** = **{len(urls) * n_bots} requests**")
 
-    st.success(f"Done — {len(df)} bots checked.")
+    with st.spinner("Running checks…"):
+        df = check_urls(urls)
 
-    # Summary metrics
-    total     = len(df)
-    ok        = (df["Status"] == 200).sum()
-    blocked   = (df["Status"].isin([403, 429])).sum()
-    errors    = df["Status"].apply(lambda x: isinstance(x, str) and x not in ("─",)).sum()
+    st.success("Done.")
+
+    # ── Summary metrics ───────────────────────────────────────────────────────
+    total   = len(df)
+    ok      = (df["Status"] == 200).sum()
+    blocked = df["Status"].isin([403, 429]).sum()
+    errors  = df["Status"].apply(lambda x: isinstance(x, str) and x not in ("─",)).sum()
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total bots", total)
-    c2.metric("200 OK", ok)
+    c1.metric("Total requests", total)
+    c2.metric("200 OK", int(ok))
     c3.metric("Blocked (403/429)", int(blocked))
     c4.metric("Errors", int(errors))
 
     st.divider()
 
-    # Filter by category
-    categories = ["All"] + sorted(df["Category"].unique().tolist())
-    cat_filter = st.radio("Filter by category", categories, horizontal=True)
+    # ── Filters ───────────────────────────────────────────────────────────────
+    col1, col2 = st.columns(2)
 
-    display_df = df if cat_filter == "All" else df[df["Category"] == cat_filter]
+    with col1:
+        url_filter = st.selectbox("Filter by URL", ["All"] + urls)
+    with col2:
+        categories = ["All"] + sorted(df["Category"].unique().tolist())
+        cat_filter = st.radio("Filter by category", categories, horizontal=True)
+
+    display_df = df.copy()
+    if url_filter != "All":
+        display_df = display_df[display_df["URL"] == url_filter]
+    if cat_filter != "All":
+        display_df = display_df[display_df["Category"] == cat_filter]
+
+    # Hide URL column when filtered to a single URL
+    cols = display_df.columns.tolist() if url_filter == "All" else [c for c in display_df.columns if c != "URL"]
 
     st.dataframe(
-        display_df.style.applymap(status_color, subset=["Status"]),
+        display_df[cols].style.applymap(status_color, subset=["Status"]),
         use_container_width=True,
         hide_index=True,
     )
 
-    # Download
+    # ── Download ──────────────────────────────────────────────────────────────
     st.download_button(
         "⬇ Download CSV",
         data=df.to_csv(index=False),
