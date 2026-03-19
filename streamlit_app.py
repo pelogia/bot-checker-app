@@ -128,9 +128,16 @@ if st.button("Check", type="primary") and url_input.strip():
     st.markdown(f"Checking **{len(urls)} URL{'s' if len(urls) > 1 else ''}** × **{n_bots} bots** = **{len(urls) * n_bots} requests**")
 
     with st.spinner("Running checks…"):
-        df = check_urls(urls)
+        st.session_state["df"] = check_urls(urls)
+        st.session_state["urls"] = urls
 
-    st.success("Done.")
+if "df" not in st.session_state:
+    st.stop()
+
+df   = st.session_state["df"]
+urls = st.session_state["urls"]
+
+st.success("Done.")
 
     # ── Summary metrics ───────────────────────────────────────────────────────
     total   = len(df)
