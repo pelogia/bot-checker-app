@@ -107,7 +107,7 @@ def status_color(val):
 # ── UI ────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Bot Checker", page_icon="🤖", layout="wide")
 
-st.title("🤖 Bot Checker")
+st.title("🤖 User Agent Bulk Checker")
 st.caption("Check how URLs respond to search engine, SEO, and AI crawlers. Up to 20 URLs at once.")
 
 url_input = st.text_area(
