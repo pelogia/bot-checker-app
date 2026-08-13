@@ -26,6 +26,7 @@ BOTS = {
     # AI crawlers
     "GPTBot":               ("AI",     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)"),
     "ChatGPT-User":         ("AI",     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot"),
+    "OAI-SearchBot":        ("AI",     "Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)"),
     "Google-Extended":      ("AI",     "Mozilla/5.0 (compatible; Google-Extended/1.0; +http://www.google.com/bot.html)"),
     "ClaudeBot":            ("AI",     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ClaudeBot/1.0; +claudebot@anthropic.com"),
     "PerplexityBot":        ("AI",     "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot"),
@@ -48,6 +49,28 @@ def normalize(url: str) -> str:
     return url if re.match(r"^https?://", url, re.I) else "https://" + url
 
 
+def sniff_format(content_type: str, body_sample: str) -> str:
+    """Classify a response as HTML or Markdown, using Content-Type first and
+    falling back to sniffing the body (some servers mislabel markdown as HTML)."""
+    ct = (content_type or "").lower()
+    sample = (body_sample or "").strip()
+    has_html_tags = bool(re.search(r"<(!doctype html|html|head|body)\b", sample, re.I))
+    looks_markdown = bool(re.match(r"^(#{1,6}\s|-\s|\*\s|>\s|```)", sample)) or "](" in sample[:1000]
+
+    if "markdown" in ct:
+        return "Markdown"
+    if "html" in ct:
+        return "Markdown (mislabeled)" if looks_markdown and not has_html_tags else "HTML"
+    if has_html_tags:
+        return "HTML"
+    if looks_markdown:
+        return "Markdown"
+    return ct.split(";")[0] if ct else "Unknown"
+
+
+EMPTY_FIELDS = {"Hops": "─", "Content-Type": "─", "Format": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+
+
 def fetch(bot_name: str, category: str, ua: str, url: str) -> dict:
     try:
         r = requests.get(
@@ -55,23 +78,34 @@ def fetch(bot_name: str, category: str, ua: str, url: str) -> dict:
             headers={"User-Agent": ua, "Accept": "*/*"},
             timeout=TIMEOUT,
             allow_redirects=True,
+            stream=True,
         )
+        try:
+            body_sample = next(r.iter_content(chunk_size=4096, decode_unicode=True), "") or ""
+        except Exception:
+            body_sample = ""
+        finally:
+            r.close()
+
+        content_type = r.headers.get("Content-Type", "─")
         return {
             "URL":          url,
             "Bot":          bot_name,
             "Category":     category,
             "Status":       r.status_code,
             "Hops":         len(r.history) or "─",
+            "Content-Type": content_type,
+            "Format":       sniff_format(content_type, body_sample),
             "Server":       r.headers.get("Server", "─"),
             "X-Robots-Tag": r.headers.get("X-Robots-Tag", "─"),
             "Final URL":    r.url if r.url != url else "─",
         }
     except requests.exceptions.Timeout:
-        return {"URL": url, "Bot": bot_name, "Category": category, "Status": "Timeout",  "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+        return {"URL": url, "Bot": bot_name, "Category": category, "Status": "Timeout", **EMPTY_FIELDS}
     except requests.exceptions.ConnectionError:
-        return {"URL": url, "Bot": bot_name, "Category": category, "Status": "ConnErr",  "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+        return {"URL": url, "Bot": bot_name, "Category": category, "Status": "ConnErr", **EMPTY_FIELDS}
     except Exception as e:
-        return {"URL": url, "Bot": bot_name, "Category": category, "Status": type(e).__name__, "Hops": "─", "Server": "─", "X-Robots-Tag": "─", "Final URL": "─"}
+        return {"URL": url, "Bot": bot_name, "Category": category, "Status": type(e).__name__, **EMPTY_FIELDS}
 
 
 def check_urls(urls: list[str]) -> pd.DataFrame:
@@ -139,16 +173,18 @@ urls = st.session_state["urls"]
 st.success("Done.")
 
 # ── Summary metrics ───────────────────────────────────────────────────────
-total   = len(df)
-ok      = (df["Status"] == 200).sum()
-blocked = df["Status"].isin([403, 429]).sum()
-errors  = df["Status"].apply(lambda x: isinstance(x, str) and x not in ("─",)).sum()
+total    = len(df)
+ok       = (df["Status"] == 200).sum()
+blocked  = df["Status"].isin([403, 429]).sum()
+errors   = df["Status"].apply(lambda x: isinstance(x, str) and x not in ("─",)).sum()
+markdown = df["Format"].astype(str).str.startswith("Markdown").sum()
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Total requests", total)
 c2.metric("200 OK", int(ok))
 c3.metric("Blocked (403/429)", int(blocked))
 c4.metric("Errors", int(errors))
+c5.metric("Markdown responses", int(markdown))
 
 st.divider()
 
