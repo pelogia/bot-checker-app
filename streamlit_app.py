@@ -207,7 +207,7 @@ if cat_filter != "All":
 cols = display_df.columns.tolist() if url_filter == "All" else [c for c in display_df.columns if c != "URL"]
 
 st.dataframe(
-    display_df[cols].style.applymap(status_color, subset=["Status"]),
+    display_df[cols].style.map(status_color, subset=["Status"]),
     use_container_width=True,
     hide_index=True,
 )
